@@ -1,0 +1,31 @@
+{
+  "model_name": "image_correction_model",
+  "input_shape": [
+    224,
+    224,
+    3
+  ],
+  "output_shape": [
+    3
+  ],
+  "total_params": 429763,
+  "keras_version": "3.12.0",
+  "tensorflow_version": "2.20.0",
+  "layers": [
+    "input_layer",
+    "rescaling",
+    "conv2d",
+    "max_pooling2d",
+    "conv2d_1",
+    "max_pooling2d_1",
+    "conv2d_2",
+    "max_pooling2d_2",
+    "conv2d_3",
+    "global_average_pooling2d",
+    "dense",
+    "dropout",
+    "dense_1",
+    "dropout_1",
+    "dense_2"
+  ]
+}
