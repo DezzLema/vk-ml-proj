@@ -31,7 +31,7 @@ ctx.addEventListener('message', async (event) => {
     if (isCancelled) return;
 
     sendProgress(taskId, 'inference', 50);
-    const params = await predict(model, inputTensor, tf);
+    const params = await predict(model, inputTensor);
     if (isCancelled) return;
 
     sendProgress(taskId, 'applying_filters', 70);
@@ -128,7 +128,7 @@ function preprocessImage(imageData: ImageData, tf: any): any {
   return tensor;
 }
 
-async function predict(model: any, input: any, tf: any): Promise<CorrectionParams> {
+async function predict(model: any, input: any): Promise<CorrectionParams> {
   const output = model.predict(input) as any;
   const values = await output.data();
   
@@ -155,9 +155,9 @@ async function predict(model: any, input: any, tf: any): Promise<CorrectionParam
   let saturation = Math.exp(saturationLog);
   
   // Ограничиваем значения для предотвращения пересвета
-  brightness = Math.max(0.5, Math.min(1.2, brightness));  // Яркость 0.7-1.4
-  contrast = Math.max(0.5, Math.min(1.2, contrast));      // Контраст 0.7-1.4
-  saturation = Math.max(0.5, Math.min(1.2, saturation));  // Насыщенность 0.5-1.5
+  brightness = Math.max(1, Math.min(1, brightness));
+  contrast = Math.max(0.5, Math.min(1.2, contrast));
+  saturation = Math.max(0.5, Math.min(1.2, saturation));
   
   const params: CorrectionParams = {
     brightness,

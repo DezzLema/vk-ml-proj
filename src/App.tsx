@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ImageUploader } from './components/ImageUploader';
 import { taskManager } from './services/taskManager';
 import { Task } from './types/index';

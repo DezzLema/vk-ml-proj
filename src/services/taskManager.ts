@@ -4,7 +4,7 @@ class TaskManager {
   private tasks: Map<string, Task> = new Map();
   private workers: Map<string, Worker> = new Map();
   private listeners: Set<(task: Task) => void> = new Set();
-  private modelUrl: string = '/model/model.json';
+  private modelUrl: string = '/vk-ml-proj/model/model.json';
 
   createTask(file: File): string {
     const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
