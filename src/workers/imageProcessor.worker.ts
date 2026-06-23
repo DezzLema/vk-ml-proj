@@ -155,7 +155,7 @@ async function predict(model: any, input: any): Promise<CorrectionParams> {
   let saturation = Math.exp(saturationLog);
   
   // Ограничиваем значения для предотвращения пересвета
-  brightness = Math.max(1, Math.min(1, brightness));
+  brightness = Math.max(0.5, Math.min(1, brightness));
   contrast = Math.max(0.5, Math.min(1.2, contrast));
   saturation = Math.max(0.5, Math.min(1.2, saturation));
   
