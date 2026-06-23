@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { taskManager } from '../services/taskManager';
+import { convertHeicToJpeg } from '../utils/heicUtils';
 
 interface ImageUploaderProps {
   onTaskCreated: (taskId: string) => void;
@@ -12,34 +13,53 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onTaskCreated }) =
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
+    console.log('📁 handleFile вызван');
+    console.log('📄 file.name:', file.name);
+    console.log('📄 file.type:', file.type);
+    console.log('📄 file.size:', file.size);
+    
     setError(null);
     setIsLoading(true);
 
     try {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-
-      await new Promise((resolve, reject) => {
-        img.onload = () => {
-          const megapixels = (img.width * img.height) / 1000000;
-          if (megapixels > 15) {
-            reject(new Error(`Image too large (${megapixels.toFixed(1)} MP). Maximum is 15 MP.`));
-          }
-          resolve(null);
-        };
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = url;
-      });
-
       const extension = file.name.split('.').pop()?.toLowerCase();
       const isHeic = extension === 'heic' || extension === 'heif';
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/bmp', 'image/heic', 'image/heif'];
 
-      if (!allowedTypes.includes(file.type) && !isHeic) {
-        throw new Error(`Format ${file.type || extension} is not supported`);
+      let processedFile = file;
+
+      // ⭐ Конвертируем HEIC в основном потоке
+      if (isHeic) {
+        console.log('🔄 HEIC файл, конвертируем в основном потоке...');
+        processedFile = await convertHeicToJpeg(file);
+        console.log('✅ HEIC сконвертирован, новый файл:', processedFile.name, processedFile.type);
+      } else {
+        // Проверка размера только для не-HEIC файлов
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+
+        await new Promise((resolve, reject) => {
+          img.onload = () => {
+            const megapixels = (img.width * img.height) / 1000000;
+            if (megapixels > 15) {
+              reject(new Error(`Image too large (${megapixels.toFixed(1)} MP). Maximum is 15 MP.`));
+            }
+            resolve(null);
+          };
+          img.onerror = () => {
+            reject(new Error('Failed to load image'));
+          };
+          img.src = url;
+        });
       }
 
-      const taskId = taskManager.createTask(file);
+      // Проверка формата
+      if (!processedFile.type.startsWith('image/')) {
+        throw new Error(`Format ${processedFile.type} is not supported`);
+      }
+
+      console.log('✅ Формат разрешён, создаём задачу...');
+      
+      const taskId = taskManager.createTask(processedFile);
       onTaskCreated(taskId);
 
       if (fileInputRef.current) {
@@ -47,6 +67,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onTaskCreated }) =
       }
 
     } catch (err) {
+      console.error('❌ Ошибка в handleFile:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setIsLoading(false);

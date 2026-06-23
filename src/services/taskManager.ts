@@ -4,12 +4,14 @@ class TaskManager {
   private tasks: Map<string, Task> = new Map();
   private workers: Map<string, Worker> = new Map();
   private listeners: Set<(task: Task) => void> = new Set();
-  private modelUrl: string = '/vk-ml-proj/model/model.json';
+  private modelUrl: string = import.meta.env.BASE_URL + 'model/model.json';
 
   createTask(file: File): string {
     const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
     
-    // Создаем URL для предпросмотра
+    console.log('📌 Создание задачи:', id);
+    console.log('📄 Файл:', file.name, file.type, file.size);
+    
     const originalImage = URL.createObjectURL(file);
     
     const task: Task = {
@@ -24,25 +26,26 @@ class TaskManager {
 
     this.tasks.set(id, task);
     this.notifyListeners(task);
-    
-    // Запускаем обработку
     this.processTask(id, file);
     
     return id;
   }
 
   private async processTask(taskId: string, file: File) {
+    console.log('🔧 processTask вызван для:', taskId);
+    
     try {
-      // Создаем Worker
+      console.log('🔨 Создание Worker...');
       const worker = new Worker(
         new URL('../workers/imageProcessor.worker.ts', import.meta.url),
         { type: 'module' }
       );
+      console.log('✅ Worker создан');
 
       this.workers.set(taskId, worker);
 
-      // Обработка сообщений от Worker
       worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
+        console.log('📨 Сообщение от Worker:', event.data);
         const data = event.data;
         const task = this.tasks.get(taskId);
         
@@ -59,9 +62,6 @@ class TaskManager {
           this.notifyListeners(task);
           this.workers.delete(taskId);
           worker.terminate();
-          
-          // Освобождаем URL исходного изображения (если не нужно)
-          // URL.revokeObjectURL(task.originalImage!);
         } else if (data.type === 'error') {
           task.status = 'error';
           task.error = data.error;
@@ -72,6 +72,7 @@ class TaskManager {
       };
 
       worker.onerror = (error) => {
+        console.error('❌ Ошибка Worker:', error);
         const task = this.tasks.get(taskId);
         if (task) {
           task.status = 'error';
@@ -82,15 +83,23 @@ class TaskManager {
         worker.terminate();
       };
 
-      // Запускаем обработку
       const input: WorkerInput = {
         taskId,
         file,
         modelUrl: this.modelUrl
       };
+      
+      console.log('📤 Отправка данных в Worker:', input.taskId);
+      console.log('📄 file.name:', file.name);
+      console.log('📄 file.type:', file.type);
+      console.log('📄 file.size:', file.size);
+      console.log('📄 modelUrl:', this.modelUrl);
+      
       worker.postMessage(input);
+      console.log('✅ Данные отправлены в Worker');
 
     } catch (error) {
+      console.error('❌ Ошибка в processTask:', error);
       const task = this.tasks.get(taskId);
       if (task) {
         task.status = 'error';

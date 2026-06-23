@@ -15,31 +15,51 @@ ctx.addEventListener('message', async (event) => {
   try {
     isCancelled = false;
 
+    console.log('📥 Worker получил задачу:', taskId);
+    console.log('📄 Имя файла:', file.name);
+    console.log('📄 Тип файла:', file.type);
+    console.log('📄 Размер:', file.size);
+
     sendProgress(taskId, 'loading_tfjs', 5);
     const tf = await import('@tensorflow/tfjs');
+    console.log('✅ TensorFlow.js загружен');
 
     sendProgress(taskId, 'decoding', 10);
-    const imageData = await decodeImage(file);
+    
+    // Прямое декодирование без HEIC
+    const imageData = await decodeImageDirect(file);
+    console.log('✅ Изображение декодировано:', imageData.width, 'x', imageData.height);
+    
     if (isCancelled) return;
 
     sendProgress(taskId, 'loading_model', 20);
     const model = await tf.loadLayersModel(modelUrl);
+    console.log('✅ Модель загружена');
+    
     if (isCancelled) return;
 
     sendProgress(taskId, 'preprocessing', 35);
     const inputTensor = preprocessImage(imageData, tf);
+    console.log('✅ Тензор создан');
+    
     if (isCancelled) return;
 
     sendProgress(taskId, 'inference', 50);
     const params = await predict(model, inputTensor);
+    console.log('✅ Инференс выполнен:', params);
+    
     if (isCancelled) return;
 
     sendProgress(taskId, 'applying_filters', 70);
     const enhancedImageData = applyCorrections(imageData, params);
+    console.log('✅ Коррекция применена');
+    
     if (isCancelled) return;
 
     sendProgress(taskId, 'encoding', 85);
     const result = await encodeImage(enhancedImageData);
+    console.log('✅ Кодирование завершено');
+    
     if (isCancelled) return;
 
     sendProgress(taskId, 'complete', 100);
@@ -53,7 +73,7 @@ ctx.addEventListener('message', async (event) => {
     model.dispose();
 
   } catch (error) {
-    console.error('Worker error:', error);
+    console.error('❌ Worker error:', error);
     ctx.postMessage({
       type: 'error',
       taskId,
@@ -65,6 +85,7 @@ ctx.addEventListener('message', async (event) => {
 ctx.addEventListener('message', (event) => {
   if (event.data.type === 'cancel' && event.data.taskId) {
     isCancelled = true;
+    console.log('⛔ Задача отменена:', event.data.taskId);
   }
 });
 
@@ -77,10 +98,20 @@ function sendProgress(taskId: string, status: string, progress: number) {
   });
 }
 
-async function decodeImage(file: File): Promise<ImageData> {
+async function decodeImageDirect(file: File): Promise<ImageData> {
+  console.log('🔄 Декодирование изображения...');
+  console.log('📄 file.type:', file.type);
+  console.log('📄 file.name:', file.name);
+  
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const imageBitmap = await createImageBitmap(new Blob([arrayBuffer]));
+    console.log('✅ ArrayBuffer получен, размер:', arrayBuffer.byteLength);
+    
+    const blob = new Blob([arrayBuffer]);
+    console.log('✅ Blob создан, тип:', blob.type);
+    
+    const imageBitmap = await createImageBitmap(blob);
+    console.log('✅ ImageBitmap создан:', imageBitmap.width, 'x', imageBitmap.height);
     
     const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height);
     const ctx = canvas.getContext('2d');
@@ -93,11 +124,12 @@ async function decodeImage(file: File): Promise<ImageData> {
     const imageData = ctx.getImageData(0, 0, imageBitmap.width, imageBitmap.height);
     
     imageBitmap.close();
+    console.log('✅ ImageData получен');
     return imageData;
     
   } catch (error) {
-    console.error('Decode error:', error);
-    throw new Error(`Ошибка декодирования изображения: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('❌ Ошибка декодирования:', error);
+    throw error;
   }
 }
 
@@ -149,12 +181,10 @@ async function predict(model: any, input: any): Promise<CorrectionParams> {
   console.log('Raw values:', valuesArray);
   console.log('Log params:', brightnessLog, contrastLog, saturationLog);
   
-  // Рассчитываем коэффициенты с ограничением
   let brightness = Math.exp(brightnessLog);
   let contrast = Math.exp(contrastLog);
   let saturation = Math.exp(saturationLog);
   
-  // Ограничиваем значения для предотвращения пересвета
   brightness = Math.max(0.5, Math.min(1, brightness));
   contrast = Math.max(0.5, Math.min(1.2, contrast));
   saturation = Math.max(0.5, Math.min(1.2, saturation));
@@ -180,17 +210,14 @@ function applyCorrections(imageData: ImageData, params: CorrectionParams): Image
     let g = data[i + 1];
     let b = data[i + 2];
 
-    // Контрастность
     r = ((r / 255 - 0.5) * contrast + 0.5) * 255;
     g = ((g / 255 - 0.5) * contrast + 0.5) * 255;
     b = ((b / 255 - 0.5) * contrast + 0.5) * 255;
 
-    // Яркость с S-образной защитой светов
     r = applyBrightnessSmooth(r, brightness);
     g = applyBrightnessSmooth(g, brightness);
     b = applyBrightnessSmooth(b, brightness);
 
-    // Насыщенность
     const gray = 0.299 * r + 0.587 * g + 0.114 * b;
     r = gray + (r - gray) * saturation;
     g = gray + (g - gray) * saturation;
@@ -204,11 +231,9 @@ function applyCorrections(imageData: ImageData, params: CorrectionParams): Image
   return imageData;
 }
 
-// Плавная яркость: тени поднимаются, света почти не меняются
 function applyBrightnessSmooth(value: number, brightness: number): number {
   const v = value / 255;
-  // S-образная кривая: чем ближе к 1, тем меньше изменение
-  const protection = v * v * v * 0.8; // 0→0, 0.5→0.1, 1→0.8
+  const protection = v * v * v * 0.8;
   const effectiveBrightness = 1.0 + (brightness - 1.0) * (1.0 - protection);
   const result = v * effectiveBrightness;
   return Math.max(0, Math.min(1, result)) * 255;
