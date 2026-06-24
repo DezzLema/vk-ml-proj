@@ -15,50 +15,49 @@ ctx.addEventListener('message', async (event) => {
   try {
     isCancelled = false;
 
-    console.log('📥 Worker получил задачу:', taskId);
-    console.log('📄 Имя файла:', file.name);
-    console.log('📄 Тип файла:', file.type);
-    console.log('📄 Размер:', file.size);
+    console.log('[Worker] Task received:', taskId);
+    console.log('[Worker] File name:', file.name);
+    console.log('[Worker] File type:', file.type);
+    console.log('[Worker] File size:', file.size);
 
     sendProgress(taskId, 'loading_tfjs', 5);
     const tf = await import('@tensorflow/tfjs');
-    console.log('✅ TensorFlow.js загружен');
+    console.log('[Worker] TensorFlow.js loaded');
 
     sendProgress(taskId, 'decoding', 10);
     
-    // Прямое декодирование без HEIC
     const imageData = await decodeImageDirect(file);
-    console.log('✅ Изображение декодировано:', imageData.width, 'x', imageData.height);
+    console.log('[Worker] Image decoded:', imageData.width, 'x', imageData.height);
     
     if (isCancelled) return;
 
     sendProgress(taskId, 'loading_model', 20);
     const model = await tf.loadLayersModel(modelUrl);
-    console.log('✅ Модель загружена');
+    console.log('[Worker] Model loaded');
     
     if (isCancelled) return;
 
     sendProgress(taskId, 'preprocessing', 35);
     const inputTensor = preprocessImage(imageData, tf);
-    console.log('✅ Тензор создан');
+    console.log('[Worker] Tensor created');
     
     if (isCancelled) return;
 
     sendProgress(taskId, 'inference', 50);
     const params = await predict(model, inputTensor);
-    console.log('✅ Инференс выполнен:', params);
+    console.log('[Worker] Inference completed:', params);
     
     if (isCancelled) return;
 
     sendProgress(taskId, 'applying_filters', 70);
     const enhancedImageData = applyCorrections(imageData, params);
-    console.log('✅ Коррекция применена');
+    console.log('[Worker] Corrections applied');
     
     if (isCancelled) return;
 
     sendProgress(taskId, 'encoding', 85);
     const result = await encodeImage(enhancedImageData);
-    console.log('✅ Кодирование завершено');
+    console.log('[Worker] Encoding finished');
     
     if (isCancelled) return;
 
@@ -73,7 +72,7 @@ ctx.addEventListener('message', async (event) => {
     model.dispose();
 
   } catch (error) {
-    console.error('❌ Worker error:', error);
+    console.error('[Worker] Error:', error);
     ctx.postMessage({
       type: 'error',
       taskId,
@@ -85,7 +84,7 @@ ctx.addEventListener('message', async (event) => {
 ctx.addEventListener('message', (event) => {
   if (event.data.type === 'cancel' && event.data.taskId) {
     isCancelled = true;
-    console.log('⛔ Задача отменена:', event.data.taskId);
+    console.log('[Worker] Task cancelled:', event.data.taskId);
   }
 });
 
@@ -99,36 +98,36 @@ function sendProgress(taskId: string, status: string, progress: number) {
 }
 
 async function decodeImageDirect(file: File): Promise<ImageData> {
-  console.log('🔄 Декодирование изображения...');
-  console.log('📄 file.type:', file.type);
-  console.log('📄 file.name:', file.name);
+  console.log('[Worker] Decoding image...');
+  console.log('[Worker] File type:', file.type);
+  console.log('[Worker] File name:', file.name);
   
   try {
     const arrayBuffer = await file.arrayBuffer();
-    console.log('✅ ArrayBuffer получен, размер:', arrayBuffer.byteLength);
+    console.log('[Worker] ArrayBuffer received, size:', arrayBuffer.byteLength);
     
     const blob = new Blob([arrayBuffer]);
-    console.log('✅ Blob создан, тип:', blob.type);
+    console.log('[Worker] Blob created, type:', blob.type);
     
     const imageBitmap = await createImageBitmap(blob);
-    console.log('✅ ImageBitmap создан:', imageBitmap.width, 'x', imageBitmap.height);
+    console.log('[Worker] ImageBitmap created:', imageBitmap.width, 'x', imageBitmap.height);
     
     const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height);
     const ctx = canvas.getContext('2d');
     
     if (!ctx) {
-      throw new Error('Не удалось получить контекст canvas');
+      throw new Error('Failed to get canvas context');
     }
     
     ctx.drawImage(imageBitmap, 0, 0);
     const imageData = ctx.getImageData(0, 0, imageBitmap.width, imageBitmap.height);
     
     imageBitmap.close();
-    console.log('✅ ImageData получен');
+    console.log('[Worker] ImageData obtained');
     return imageData;
     
   } catch (error) {
-    console.error('❌ Ошибка декодирования:', error);
+    console.error('[Worker] Decoding error:', error);
     throw error;
   }
 }
@@ -137,12 +136,12 @@ function preprocessImage(imageData: ImageData, tf: any): any {
   const canvas = new OffscreenCanvas(224, 224);
   const ctx = canvas.getContext('2d');
   
-  if (!ctx) throw new Error('Не удалось получить контекст canvas');
+  if (!ctx) throw new Error('Failed to get canvas context');
   
   const tempCanvas = new OffscreenCanvas(imageData.width, imageData.height);
   const tempCtx = tempCanvas.getContext('2d');
   
-  if (!tempCtx) throw new Error('Не удалось получить контекст canvas');
+  if (!tempCtx) throw new Error('Failed to get canvas context');
   
   tempCtx.putImageData(imageData, 0, 0);
   ctx.drawImage(tempCanvas, 0, 0, 224, 224);
@@ -167,7 +166,7 @@ async function predict(model: any, input: any): Promise<CorrectionParams> {
   const valuesArray = Array.from(values);
   
   if (valuesArray.length < 3) {
-    throw new Error(`Ожидалось 3 значения, получено ${valuesArray.length}`);
+    throw new Error(`Expected 3 values, got ${valuesArray.length}`);
   }
   
   const brightnessLog = Number(valuesArray[0]);
@@ -175,11 +174,11 @@ async function predict(model: any, input: any): Promise<CorrectionParams> {
   const saturationLog = Number(valuesArray[2]);
   
   if (isNaN(brightnessLog) || isNaN(contrastLog) || isNaN(saturationLog)) {
-    throw new Error('Модель вернула нечисловые значения');
+    throw new Error('Model returned non-numeric values');
   }
   
-  console.log('Raw values:', valuesArray);
-  console.log('Log params:', brightnessLog, contrastLog, saturationLog);
+  console.log('[Worker] Raw values:', valuesArray);
+  console.log('[Worker] Log params:', brightnessLog, contrastLog, saturationLog);
   
   let brightness = Math.exp(brightnessLog);
   let contrast = Math.exp(contrastLog);
@@ -195,7 +194,7 @@ async function predict(model: any, input: any): Promise<CorrectionParams> {
     saturation
   };
   
-  console.log('Final params (limited):', params);
+  console.log('[Worker] Final params (limited):', params);
   
   output.dispose();
   return params;
@@ -243,7 +242,7 @@ async function encodeImage(imageData: ImageData): Promise<string> {
   const canvas = new OffscreenCanvas(imageData.width, imageData.height);
   const ctx = canvas.getContext('2d');
   
-  if (!ctx) throw new Error('Не удалось получить контекст canvas');
+  if (!ctx) throw new Error('Failed to get canvas context');
   
   ctx.putImageData(imageData, 0, 0);
   
@@ -255,7 +254,7 @@ async function encodeImage(imageData: ImageData): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('Ошибка кодирования'));
+    reader.onerror = () => reject(new Error('Encoding error'));
     reader.readAsDataURL(blob);
   });
 }

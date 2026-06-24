@@ -13,10 +13,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onTaskCreated }) =
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
-    console.log('📁 handleFile вызван');
-    console.log('📄 file.name:', file.name);
-    console.log('📄 file.type:', file.type);
-    console.log('📄 file.size:', file.size);
+    console.log('[ImageUploader] handleFile called');
+    console.log('[ImageUploader] file.name:', file.name);
+    console.log('[ImageUploader] file.type:', file.type);
+    console.log('[ImageUploader] file.size:', file.size);
     
     setError(null);
     setIsLoading(true);
@@ -27,13 +27,13 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onTaskCreated }) =
 
       let processedFile = file;
 
-      // ⭐ Конвертируем HEIC в основном потоке
+      // Convert HEIC files in the main thread before worker processing
       if (isHeic) {
-        console.log('🔄 HEIC файл, конвертируем в основном потоке...');
+        console.log('[ImageUploader] HEIC file detected, converting in main thread...');
         processedFile = await convertHeicToJpeg(file);
-        console.log('✅ HEIC сконвертирован, новый файл:', processedFile.name, processedFile.type);
+        console.log('[ImageUploader] HEIC converted, new file:', processedFile.name, processedFile.type);
       } else {
-        // Проверка размера только для не-HEIC файлов
+        // Validate image dimensions for non-HEIC formats
         const img = new Image();
         const url = URL.createObjectURL(file);
 
@@ -52,12 +52,12 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onTaskCreated }) =
         });
       }
 
-      // Проверка формата
+      // Verify the file is a valid image format
       if (!processedFile.type.startsWith('image/')) {
         throw new Error(`Format ${processedFile.type} is not supported`);
       }
 
-      console.log('✅ Формат разрешён, создаём задачу...');
+      console.log('[ImageUploader] File validated, creating task...');
       
       const taskId = taskManager.createTask(processedFile);
       onTaskCreated(taskId);
@@ -67,7 +67,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onTaskCreated }) =
       }
 
     } catch (err) {
-      console.error('❌ Ошибка в handleFile:', err);
+      console.error('[ImageUploader] Error in handleFile:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setIsLoading(false);

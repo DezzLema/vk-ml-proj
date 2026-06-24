@@ -1,7 +1,7 @@
 import heic2any from 'heic2any';
 
 export async function convertHeicToJpeg(file: File): Promise<File> {
-  console.log('🔄 Конвертация HEIC в основном потоке...');
+  console.log('[HEIC Converter] Starting conversion in main thread...');
   
   try {
     const resultBlob = await heic2any({
@@ -14,11 +14,11 @@ export async function convertHeicToJpeg(file: File): Promise<File> {
     const newFileName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
     const jpegFile = new File([jpegBlob], newFileName, { type: 'image/jpeg' });
     
-    console.log('✅ HEIC конвертирован в JPEG');
+    console.log('[HEIC Converter] Conversion completed successfully');
     return jpegFile;
     
   } catch (error) {
-    console.error('❌ Ошибка конвертации HEIC:', error);
-    throw new Error(`Не удалось конвертировать HEIC: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('[HEIC Converter] Conversion failed:', error);
+    throw new Error(`HEIC conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

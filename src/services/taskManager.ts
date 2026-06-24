@@ -9,8 +9,8 @@ class TaskManager {
   createTask(file: File): string {
     const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
     
-    console.log('📌 Создание задачи:', id);
-    console.log('📄 Файл:', file.name, file.type, file.size);
+    console.log('[TaskManager] Creating task:', id);
+    console.log('[TaskManager] File:', file.name, file.type, file.size);
     
     const originalImage = URL.createObjectURL(file);
     
@@ -32,20 +32,20 @@ class TaskManager {
   }
 
   private async processTask(taskId: string, file: File) {
-    console.log('🔧 processTask вызван для:', taskId);
+    console.log('[TaskManager] processTask called for:', taskId);
     
     try {
-      console.log('🔨 Создание Worker...');
+      console.log('[TaskManager] Creating worker...');
       const worker = new Worker(
         new URL('../workers/imageProcessor.worker.ts', import.meta.url),
         { type: 'module' }
       );
-      console.log('✅ Worker создан');
+      console.log('[TaskManager] Worker created');
 
       this.workers.set(taskId, worker);
 
       worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
-        console.log('📨 Сообщение от Worker:', event.data);
+        console.log('[TaskManager] Message from worker:', event.data);
         const data = event.data;
         const task = this.tasks.get(taskId);
         
@@ -72,7 +72,7 @@ class TaskManager {
       };
 
       worker.onerror = (error) => {
-        console.error('❌ Ошибка Worker:', error);
+        console.error('[TaskManager] Worker error:', error);
         const task = this.tasks.get(taskId);
         if (task) {
           task.status = 'error';
@@ -89,17 +89,17 @@ class TaskManager {
         modelUrl: this.modelUrl
       };
       
-      console.log('📤 Отправка данных в Worker:', input.taskId);
-      console.log('📄 file.name:', file.name);
-      console.log('📄 file.type:', file.type);
-      console.log('📄 file.size:', file.size);
-      console.log('📄 modelUrl:', this.modelUrl);
+      console.log('[TaskManager] Sending data to worker:', input.taskId);
+      console.log('[TaskManager] file.name:', file.name);
+      console.log('[TaskManager] file.type:', file.type);
+      console.log('[TaskManager] file.size:', file.size);
+      console.log('[TaskManager] modelUrl:', this.modelUrl);
       
       worker.postMessage(input);
-      console.log('✅ Данные отправлены в Worker');
+      console.log('[TaskManager] Data sent to worker');
 
     } catch (error) {
-      console.error('❌ Ошибка в processTask:', error);
+      console.error('[TaskManager] Error in processTask:', error);
       const task = this.tasks.get(taskId);
       if (task) {
         task.status = 'error';
