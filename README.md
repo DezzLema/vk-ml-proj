@@ -1,73 +1,110 @@
-# React + TypeScript + Vite
+# Image Enhancement
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Веб-приложение для автоматической коррекции изображений прямо в браузере. Никаких серверов, никакой загрузки данных — всё работает локально на устройстве пользователя.
 
-Currently, two official plugins are available:
+**[Открыть приложение →](https://dezzlema.github.io/vk-ml-proj/)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Идея
 
-## React Compiler
+Большинство подходов к улучшению изображений через ML решают задачу image-to-image: нейросеть принимает пиксели на вход и возвращает пиксели на выход. Это тяжело, медленно и плохо подходит для браузера.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Здесь выбран другой путь. Модель не трогает пиксели — она предсказывает три числа: коэффициенты коррекции яркости, контрастности и насыщенности. Отдельный алгоритм применяет эти коэффициенты к исходному изображению в полном разрешении. Такое разделение ответственности даёт компактную модель, быстрый инференс и предсказуемый результат.
 
-## Expanding the ESLint configuration
+## Пайплайн обработки
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. Пользователь загружает изображение через интерфейс.
+2. Приложение создаёт задачу и присваивает ей идентификатор.
+3. HEIC/HEIF при необходимости конвертируются в JPEG в главном потоке через `heic2any`.
+4. Файл передаётся в Web Worker — главный поток не блокируется.
+5. Изображение декодируется через `createImageBitmap` и `OffscreenCanvas`.
+6. Для входа в модель создаётся копия размером 224×224 — инференс работает на уменьшенной версии.
+7. TensorFlow.js запускает модель и возвращает три коэффициента в логарифмическом пространстве.
+8. Применяется `exp()` для обратного преобразования, значения клипируются до разумных диапазонов.
+9. Коррекция применяется к исходному изображению в полном разрешении попиксельно.
+10. Результат кодируется в JPEG и передаётся обратно в UI.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+На каждом этапе обновляется статус задачи и прогресс — интерфейс отражает всё в реальном времени.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Модель
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Архитектура
+
+Компактная свёрточная сеть: четыре блока `Conv2D + MaxPooling`, затем `GlobalAveragePooling2D` и два полносвязных слоя с дропаутом. Выходной слой — три нейрона с линейной активацией.
+
+```
+Input (224×224×3)
+→ Conv2D(32) + MaxPool
+→ Conv2D(64) + MaxPool
+→ Conv2D(128) + MaxPool
+→ Conv2D(256) + GlobalAvgPool
+→ Dense(128) + Dropout(0.3)
+→ Dense(64)  + Dropout(0.2)
+→ Dense(3)   [brightness_log, contrast_log, saturation_log]
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Данные
+
+Датасет — [Adobe FiveK](https://www.kaggle.com/datasets/weipengzhang/adobe-fivek), коллекция профессионально обработанных фотографий. Из эталонных изображений синтетически генерировались деградированные версии: случайным образом изменялись яркость, контрастность и насыщенность в заданных диапазонах.
+
+Таргеты рассчитывались аналитически из пар изображений:
+
+- **Яркость** — отношение средних значений пикселей эталона к деградированному
+- **Контрастность** — отношение стандартных отклонений
+- **Насыщенность** — отношение средних значений S-канала в HSV
+
+Все три значения логарифмируются перед подачей в лосс, чтобы штрафы за отклонения были симметричными в обоих направлениях.
+
+### Обучение
+
+| Параметр | Значение |
+|---|---|
+| Оптимизатор | Adam, lr=0.001 |
+| Лосс | MSE |
+| Batch size | 32 |
+| Epochs (max) | 50 |
+| Early stopping | patience=15 |
+| LR scheduler | ReduceLROnPlateau, factor=0.5, patience=5 |
+
+Лучший чекпоинт сохранялся по `val_loss`. Финальная модель экспортирована через `tensorflowjs_converter` в формат `LayersModel` для использования в браузере.
+
+## API управления задачами
+
+Вся логика обработки скрыта за простым интерфейсом:
 
 ```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+// Создать задачу — возвращает taskId
+const taskId = taskManager.createTask(file)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+// Подписаться на обновления статуса
+const unsubscribe = taskManager.subscribe(task => {
+  console.log(task.status, task.progress)
+})
+
+// Получить текущее состояние задачи
+const task = taskManager.getTask(taskId)
+// { id, status, progress, originalImage, enhancedImage, ... }
+
+// Отменить задачу
+taskManager.cancelTask(taskId)
 ```
+
+Статусы задачи по порядку: `pending → decoding → loading_model → preprocessing → inference → applying_filters → encoding → complete`
+
+## Стек
+
+**ML**  
+Python · TensorFlow / Keras · Google Colab
+
+**Web**  
+React · Vite · TensorFlow.js
+
+**Низкоуровневые API**  
+Web Worker · OffscreenCanvas · createImageBitmap · FileReader
+
+**Форматы изображений**  
+JPG / PNG / BMP / HEIC / HEIF
+
+## Ограничения
+
+- Максимальный размер изображения: 15 Мпк
+- Поддерживаемые форматы: JPG, PNG, BMP, HEIC, HEIF
